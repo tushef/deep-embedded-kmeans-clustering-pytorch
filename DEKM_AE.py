@@ -1,12 +1,10 @@
 import numpy as np
 import torch
-from clustpy.data import unflatten_images, flatten_images
-from clustpy.deep.autoencoders._abstract_autoencoder import _AbstractAutoencoder
 from numpy import ndarray
 from torch import nn
 
 
-class DEKM_AE(_AbstractAutoencoder):
+class DEKM_AE(torch.nn.Module):
     def __init__(self, input_shape, layers, embedding_size):
         super().__init__()
         self.input_shape = input_shape

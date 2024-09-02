@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from numpy.random import RandomState
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.cluster import KMeans
 from torch import linalg
@@ -7,7 +8,7 @@ from torch.nn import Parameter
 from torch.utils.data import DataLoader, TensorDataset
 
 import utils_preprocess
-from algorithms.DEKM.DEKM_AE import DEKM_AE
+from DEKM_AE import DEKM_AE
 
 
 class DEKM(BaseEstimator, ClusterMixin):
@@ -19,14 +20,8 @@ class DEKM(BaseEstimator, ClusterMixin):
     ----------
     n_clusters : int
         number of clusters. Can be None if a corresponding initial_clustering_class is given, e.g. DBSCAN
-    alpha : float
-        alpha value for the prediction (default: 1.0)
     batch_size : int
         size of the data batches (default: 256)
-    pretrain_optimizer_params : dict
-        parameters of the optimizer for the pretraining of the autoencoder, includes the learning rate (default: {"lr": 1e-3})
-    clustering_optimizer_params : dict
-        parameters of the optimizer for the actual clustering procedure, includes the learning rate (default: {"lr": 1e-4})
     pretrain_epochs : int
         number of epochs for the pretraining of the autoencoder (default: 100)
     clustering_epochs : int
@@ -44,14 +39,7 @@ class DEKM(BaseEstimator, ClusterMixin):
     custom_dataloaders : tuple
         tuple consisting of a trainloader (random order) at the first and a test loader (non-random order) at the second position.
         If None, the default dataloaders will be used (default: None)
-    augmentation_invariance : bool
-        If True, augmented samples provided in custom_dataloaders[0] will be used to learn
-        cluster assignments that are invariant to the augmentation transformations (default: False)
-    initial_clustering_class : ClusterMixin
-        clustering class to obtain the initial cluster labels after the pretraining (default: KMeans)
-    initial_clustering_params : dict
-        parameters for the initial clustering class (default: {})
-    random_state : np.random.RandomState
+    random_state : int
         use a fixed random state to get a repeatable solution. Can also be of type int (default: None)
 
     Attributes
@@ -66,32 +54,31 @@ class DEKM(BaseEstimator, ClusterMixin):
 
     """
 
-    def __init__(self, n_clusters: int, alpha: float = 1.0, batch_size: int = 256,
-                 pretrain_optimizer_params: dict = None, clustering_optimizer_params: dict = None,
+    def __init__(self, n_clusters: int, batch_size: int = 256,
                  pretrain_epochs: int = 100, clustering_epochs: int = 150,
                  optimizer_class: torch.optim.Optimizer = torch.optim.Adam,
+                 pretrain_learning_rate: float = 0.001, clustering_learning_rate: float = 0.0001,
                  loss_fn: torch.nn.modules.loss._Loss = torch.nn.MSELoss(), autoencoder: torch.nn.Module = None,
                  embedding_size: int = 10, cluster_loss_weight: float = 1, custom_dataloaders: tuple = None,
-                 augmentation_invariance: bool = False, initial_clustering_class: ClusterMixin = KMeans,
-                 initial_clustering_params: dict = None, random_state: np.random.RandomState = None):
+                 random_state: int = 42):
+
         self.n_clusters = n_clusters
-        self.alpha = alpha
         self.batch_size = batch_size
-        self.pretrain_optimizer_params = pretrain_optimizer_params
-        self.clustering_optimizer_params = clustering_optimizer_params
         self.pretrain_epochs = pretrain_epochs
         self.clustering_epochs = clustering_epochs
+        self.pretrain_learning_rate = pretrain_learning_rate
+        self.clustering_learning_rate = clustering_learning_rate
         self.optimizer_class = optimizer_class
         self.loss_fn = loss_fn
         self.autoencoder = autoencoder
         self.embedding_size = embedding_size
         self.cluster_loss_weight = cluster_loss_weight
         self.custom_dataloaders = custom_dataloaders
-        self.augmentation_invariance = augmentation_invariance
-        self.initial_clustering_class = initial_clustering_class
-        self.initial_clustering_params = initial_clustering_params
         self.random_state = random_state
+        np.random.seed(random_state)
+        # Attributes
         self.center = None
+        self.labels_ = None
 
     def fit(self, X: np.ndarray, y: np.ndarray = None) -> 'DEKM':
         """
@@ -111,7 +98,7 @@ class DEKM(BaseEstimator, ClusterMixin):
             this instance of the DEKM algorithm
         """
         if self.autoencoder is None:
-            self.create_autoencoder(X)
+            self._create_autoencoder(X)
 
         if not self.autoencoder.fitted:
             self._pretrain_autoencoder(X)
@@ -140,46 +127,26 @@ class DEKM(BaseEstimator, ClusterMixin):
         predicted_labels = self._cluster(X).min(1)[1].cpu().numpy()
         return predicted_labels
 
-    def _pretrain_autoencoder(self, X):
-        print("Pretrain DEKM Autoencoder")
-        ### Prepare Data
-        channels = self.autoencoder.input_shape[2]
-        width = self.autoencoder.input_shape[0]
-        height = self.autoencoder.input_shape[1]
-
-        dataset = TensorDataset(torch.from_numpy(X).view(X.shape[0], channels, height, width) / 255.0)
-
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
-        dataset_size = X.shape[0]
-
-        optimizer = self.optimizer_class(self.autoencoder.parameters())
-
-        self.autoencoder = self._train_autoencoder(dataset_size,
-                                                   optimizer,
-                                                   dataloader)
-        self.autoencoder.fitted = True
-
-    def _cluster(self, X):
-        return linalg.norm(X[:, None, :] - self.center, dim=2)
-
-    def create_autoencoder(self, X):
+    def _create_autoencoder(self, X):
         print('Creating Autoencoder')
         image_shape = utils_preprocess.get_input_shape(X)
-        ae = DEKM_AE(input_shape=[image_shape[1], image_shape[2], image_shape[3]],
-                     layers=[32, 64, 128], embedding_size=self.embedding_size)
-        self.autoencoder = ae
+        self.autoencoder = DEKM_AE(input_shape=[image_shape[1], image_shape[2], image_shape[3]],
+                                   layers=[32, 64, 128], embedding_size=self.embedding_size)
 
-    def _train_autoencoder(self,
-                           dataset_size,
-                           optimizer,
-                           train_dataloader, ):
+    def _pretrain_autoencoder(self, X):
+        print("Pretrain DEKM Autoencoder")
+
+        dataloader = self._prepare_dataloader()
+        dataset_size = X.shape[0]
+
+        optimizer = self.optimizer_class(self.autoencoder.parameters(), lr=self.pretrain_learning_rate)
 
         self.autoencoder.train()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         for epoch in range(1, self.pretrain_epochs + 1):
             loss = 0.
-            for i, (x) in enumerate(train_dataloader, 1):
+            for i, (x) in enumerate(dataloader, 1):
                 x = x[0].to(device)
                 optimizer.zero_grad()
                 _, reconstruction = self.autoencoder(x)
@@ -189,7 +156,24 @@ class DEKM(BaseEstimator, ClusterMixin):
                 loss += batch_loss * x.shape[0]
 
             loss /= dataset_size
-        return self.autoencoder
+
+        self.autoencoder.fitted = True
+
+    def _cluster(self, X):
+        return linalg.norm(X[:, None, :] - self.center, dim=2)
+
+    def _prepare_dataloader(self):
+        ### Prepare Data
+        channels = self.autoencoder.get_channels()
+        width = self.autoencoder.get_image_width()
+        height = self.autoencoder.get_image_height()
+
+        ### Unflatten the data
+        dataset = TensorDataset(torch.from_numpy(X).view(X.shape[0], channels, height, width) / 255.0)
+
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+
+        return dataloader
 
     def sorted_eig(self, X):
         e_vals, e_vecs = np.linalg.eig(X)
@@ -199,11 +183,9 @@ class DEKM(BaseEstimator, ClusterMixin):
         return e_vals, e_vecs
 
     def train(self, x):
-        model = self.autoencoder
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        optimizer = self.optimizer_class(self.autoencoder.parameters())
-        loss_value = 0
+        optimizer = self.optimizer_class(self.autoencoder.parameters(), lr = self.clustering_learning_rate)
         index = 0
         kmeans_n_init = 100
         assignment = np.array([-1] * len(x))
@@ -212,14 +194,14 @@ class DEKM(BaseEstimator, ClusterMixin):
 
         for ite in range(self.clustering_epochs):
             if ite % 10 == 0:
-                H = model.encode(x_tensor).detach().numpy()
-                ans_kmeans = KMeans(n_clusters=self.n_clusters, n_init=kmeans_n_init).fit(H)
-                kmeans_n_init = int(ans_kmeans.n_iter_ * 2)
+                hidden_layer = self.autoencoder.encode(x_tensor).detach().numpy()
+                kmeans = KMeans(n_clusters=self.n_clusters, n_init=kmeans_n_init).fit(hidden_layer)
+                kmeans_n_init = int(kmeans.n_iter_ * 2)
 
-                U = ans_kmeans.cluster_centers_
-                self.center = Parameter(torch.tensor(U, device=device), False)
-                assignment_new = ans_kmeans.labels_
-                self.labels_ = ans_kmeans.labels_
+                cluster_centers_ = kmeans.cluster_centers_
+                self.center = Parameter(torch.tensor(cluster_centers_, device=device), False)
+                assignment_new = kmeans.labels_
+                self.labels_ = kmeans.labels_
 
                 w = np.zeros((self.n_clusters, self.n_clusters), dtype=np.int64)
                 for i in range(len(assignment_new)):
@@ -234,14 +216,14 @@ class DEKM(BaseEstimator, ClusterMixin):
 
                 S_i = []
                 for i in range(self.n_clusters):
-                    temp = H[assignment == i] - U[i]
+                    temp = hidden_layer[assignment == i] - cluster_centers_[i]
                     temp = np.matmul(np.transpose(temp), temp)
                     S_i.append(temp)
                 S_i = np.array(S_i)
                 S = np.sum(S_i, 0)
                 Evals, V = self.sorted_eig(S)
-                H_vt = np.matmul(H, V)
-                U_vt = np.matmul(U, V)
+                H_vt = np.matmul(hidden_layer, V)
+                U_vt = np.matmul(cluster_centers_, V)
 
             if n_change_assignment <= len(x) * 0.005:
                 print('Ending Training')
@@ -254,11 +236,11 @@ class DEKM(BaseEstimator, ClusterMixin):
                 y_true[i, -1] = U_vt[temp[i], -1]
             y_true = torch.Tensor(y_true)
 
-            model.train()
+            self.autoencoder.train()
             optimizer.zero_grad()
-            outputs = model.encode(x_tensor[idx])
+            outputs = self.autoencoder.encode(x_tensor[idx])
             y_pred_cluster = torch.matmul(outputs, torch.Tensor(V))
-            loss_value = torch.nn.functional.mse_loss(y_true, y_pred_cluster)
+            loss_value = self.loss_fn(y_true, y_pred_cluster)
             loss_value.backward()
             optimizer.step()
 
