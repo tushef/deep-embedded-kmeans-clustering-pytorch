@@ -1,13 +1,12 @@
 import numpy as np
 import torch
-from numpy.random import RandomState
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.cluster import KMeans
 from torch import linalg
 from torch.nn import Parameter
 from torch.utils.data import DataLoader, TensorDataset
 
-import utils_preprocess
+import utils
 from DEKM_AE import DEKM_AE
 
 
@@ -28,6 +27,10 @@ class DEKM(BaseEstimator, ClusterMixin):
         number of epochs for the actual clustering procedure (default: 150)
     optimizer_class : torch.optim.Optimizer
         the optimizer class (default: torch.optim.Adam)
+    pretrain_learning_rate: float
+        the learning rate for the pretraining optimizer (default: 0.001)
+    clustering_learning_rate
+        the learning rate for the clustering optimizer (default: 0.0001)
     loss_fn : torch.nn.modules.loss._Loss
         loss function for the reconstruction (default: torch.nn.MSELoss())
     autoencoder : torch.nn.Module
@@ -41,6 +44,8 @@ class DEKM(BaseEstimator, ClusterMixin):
         If None, the default dataloaders will be used (default: None)
     random_state : int
         use a fixed random state to get a repeatable solution. Can also be of type int (default: None)
+    save_dir: str
+        saving directory to save the pretrained autoencoder weights (default: None)
 
     Attributes
     ----------
@@ -51,6 +56,14 @@ class DEKM(BaseEstimator, ClusterMixin):
 
     References
     ----------
+    @inproceedings{guo2021deep,
+        title={Deep Embedded K-Means Clustering},
+        author={Guo, Wengang and Lin, Kaiyan and Ye, Wei},
+        booktitle={2021 International Conference on Data Mining Workshops (ICDMW)},
+        pages={686--694},
+        year={2021},
+        organization={IEEE}
+    }
 
     """
 
@@ -60,7 +73,7 @@ class DEKM(BaseEstimator, ClusterMixin):
                  pretrain_learning_rate: float = 0.001, clustering_learning_rate: float = 0.0001,
                  loss_fn: torch.nn.modules.loss._Loss = torch.nn.MSELoss(), autoencoder: torch.nn.Module = None,
                  embedding_size: int = 10, cluster_loss_weight: float = 1, custom_dataloaders: tuple = None,
-                 random_state: int = 42):
+                 random_state: int = 42, save_dir: str = None):
 
         self.n_clusters = n_clusters
         self.batch_size = batch_size
@@ -75,6 +88,7 @@ class DEKM(BaseEstimator, ClusterMixin):
         self.cluster_loss_weight = cluster_loss_weight
         self.custom_dataloaders = custom_dataloaders
         self.random_state = random_state
+        self.save_dir = save_dir
         np.random.seed(random_state)
         # Attributes
         self.center = None
@@ -129,14 +143,14 @@ class DEKM(BaseEstimator, ClusterMixin):
 
     def _create_autoencoder(self, X):
         print('Creating Autoencoder')
-        image_shape = utils_preprocess.get_input_shape(X)
+        image_shape = utils.get_input_shape(X)
         self.autoencoder = DEKM_AE(input_shape=[image_shape[1], image_shape[2], image_shape[3]],
                                    layers=[32, 64, 128], embedding_size=self.embedding_size)
 
     def _pretrain_autoencoder(self, X):
         print("Pretrain DEKM Autoencoder")
 
-        dataloader = self._prepare_dataloader()
+        dataloader = self._prepare_dataloader(X)
         dataset_size = X.shape[0]
 
         optimizer = self.optimizer_class(self.autoencoder.parameters(), lr=self.pretrain_learning_rate)
@@ -158,11 +172,12 @@ class DEKM(BaseEstimator, ClusterMixin):
             loss /= dataset_size
 
         self.autoencoder.fitted = True
+        torch.save(self.autoencoder.state_dict(), self.save_dir)
 
     def _cluster(self, X):
         return linalg.norm(X[:, None, :] - self.center, dim=2)
 
-    def _prepare_dataloader(self):
+    def _prepare_dataloader(self, X):
         ### Prepare Data
         channels = self.autoencoder.get_channels()
         width = self.autoencoder.get_image_width()
@@ -175,7 +190,7 @@ class DEKM(BaseEstimator, ClusterMixin):
 
         return dataloader
 
-    def sorted_eig(self, X):
+    def _sorted_eig(self, X):
         e_vals, e_vecs = np.linalg.eig(X)
         idx = np.argsort(e_vals)
         e_vecs = e_vecs[:, idx]
@@ -221,7 +236,7 @@ class DEKM(BaseEstimator, ClusterMixin):
                     S_i.append(temp)
                 S_i = np.array(S_i)
                 S = np.sum(S_i, 0)
-                Evals, V = self.sorted_eig(S)
+                Evals, V = self._sorted_eig(S)
                 H_vt = np.matmul(hidden_layer, V)
                 U_vt = np.matmul(cluster_centers_, V)
 
