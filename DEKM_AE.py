@@ -41,13 +41,13 @@ class DEKM_AE(torch.nn.Module):
         return x_encoded, gen
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.reshape(x.shape[0], self.get_channels(), self.get_image_height(), self.get_image_width())
+        #x = x.reshape(x.shape[0], self.get_channels(), self.get_image_height(), self.get_image_width())
         x = self.encoder(x)
         return x
 
     def decode(self, x: torch.Tensor) -> torch.Tensor:
         x = self.decoder(x)
-        x = x.reshape(x.shape[0], self.get_channels() * self.get_image_height() * self.get_image_width())
+        #x = x.reshape(x.shape[0], self.get_channels() * self.get_image_height() * self.get_image_width())
         return x
 
     def get_image_width(self):
