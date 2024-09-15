@@ -5,7 +5,8 @@ from torch import nn
 
 
 class DEKM_AE(torch.nn.Module):
-    def __init__(self, input_shape, layers, embedding_size):
+    def __init__(self, input_shape, embedding_size, layers=[32, 64, 128]):
+        super().__init__()
         self.input_shape = input_shape
         flatten_height = ((self.input_shape[0] // 2 // 2 - 1) // 2)
         lin_features_len = flatten_height * flatten_height * layers[2]
