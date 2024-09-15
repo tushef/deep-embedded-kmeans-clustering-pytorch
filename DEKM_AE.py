@@ -6,8 +6,9 @@ from torch import nn
 
 class DEKM_AE(torch.nn.Module):
     def __init__(self, input_shape, layers, embedding_size):
-        super().__init__()
         self.input_shape = input_shape
+        flatten_height = ((self.input_shape[0] // 2 // 2 - 1) // 2)
+        lin_features_len = flatten_height * flatten_height * layers[2]
         self.encoder = nn.Sequential(
             nn.Conv2d(input_shape[2], layers[0], 5, 2, 2),
             nn.ReLU(),
@@ -16,17 +17,21 @@ class DEKM_AE(torch.nn.Module):
             nn.Conv2d(layers[1], layers[2], 3, 2, 0),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(3 * 3 * layers[2], embedding_size)
+            nn.Linear(lin_features_len, embedding_size)
         )
+        out_pad_1 = 1 if input_shape[0] // 2 // 2 % 2 == 0 else 0
+        out_pad_2 = 1 if input_shape[0] // 2 % 2 == 0 else 0
+        out_pad_3 = 1 if input_shape[0] % 2 == 0 else 0
         self.decoder = nn.Sequential(
-            nn.Linear(embedding_size, 3 * 3 * layers[2]),
-            Unflatten((layers[2], 3, 3)),
+            nn.Linear(embedding_size, lin_features_len),
+            Unflatten(
+                (layers[2], flatten_height, flatten_height)),
             nn.ReLU(),
-            nn.ConvTranspose2d(layers[2], layers[1], 3, 2, 0),
+            nn.ConvTranspose2d(layers[2], layers[1], 3, 2, 0, output_padding=out_pad_1),
             nn.ReLU(),
-            nn.ConvTranspose2d(layers[1], layers[0], 5, 2, 2, 1),
+            nn.ConvTranspose2d(layers[1], layers[0], 5, 2, 2, output_padding=out_pad_2),
             nn.ReLU(),
-            nn.ConvTranspose2d(layers[0], input_shape[2], 5, 2, 2, 1)
+            nn.ConvTranspose2d(layers[0], input_shape[2], 5, 2, 2, output_padding=out_pad_3)
         )
         self.fitted = False
 
