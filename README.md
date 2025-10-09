@@ -1,10 +1,9 @@
 # Deep Embedded K-Means Clustering (DEKM)
 
 [![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/pytorch-1.8+-red.svg)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![PyTorch](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org/)
 
-A high-quality PyTorch implementation of the **Deep Embedded K-Means Clustering** algorithm, as described in the paper:
+An unofficial PyTorch implementation of the **Deep Embedded K-Means Clustering** algorithm, as described in the paper:
 
 > **Deep Embedded K-Means Clustering**  
 > Wengang Guo, Kaiyan Lin, Wei Ye  
@@ -16,7 +15,6 @@ A high-quality PyTorch implementation of the **Deep Embedded K-Means Clustering*
 - **Complete Implementation**: Full DEKM algorithm with autoencoder pretraining and joint clustering optimization
 - **Multiple Datasets**: Support for MNIST, CIFAR-10, Fashion-MNIST, KMNIST, STL-10, and USPS
 - **Comprehensive Evaluation**: Built-in evaluation pipeline with visualization and metrics
-- **Professional Code**: Well-documented, modular, and maintainable codebase
 - **Easy to Use**: Simple command-line interface and example scripts
 - **Flexible Configuration**: Extensive hyperparameter tuning options
 
@@ -36,7 +34,7 @@ scipy>=1.6.0
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/your-username/deep-embedded-kmeans-clustering-pytorch.git
+git clone https://github.com/tushef/deep-embedded-kmeans-clustering-pytorch.git
 cd deep-embedded-kmeans-clustering-pytorch
 ```
 
@@ -57,7 +55,7 @@ python main.py --dataset mnist --n-clusters 10 --verbose
 
 ### Using Example Scripts
 
-We provide several example scripts in the `scripts/` directory:
+Some example scripts in the `scripts/` directory are provided:
 
 ```bash
 # Quick test (reduced epochs)
@@ -120,8 +118,6 @@ python main.py \
 
 ## 📈 Evaluation and Visualization
 
-The evaluation pipeline provides comprehensive analysis:
-
 ### Metrics Computed
 - **Normalized Mutual Information (NMI)**
 - **Adjusted Rand Index (ARI)**
@@ -132,7 +128,6 @@ The evaluation pipeline provides comprehensive analysis:
 - t-SNE embeddings visualization
 - PCA projections
 - Cluster size distributions
-- Comprehensive evaluation reports
 
 ### Example Evaluation Output
 
@@ -233,23 +228,6 @@ The evaluation pipeline generates several types of visualizations:
 - **Cluster distributions** showing class balance
 - **PCA projections** for faster visualization of high-dimensional embeddings
 
-## 🤝 Contributing
-
-We welcome contributions! Please feel free to submit issues, feature requests, or pull requests.
-
-### Development Setup
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and add tests
-4. Commit your changes: `git commit -am 'Add feature'`
-5. Push to the branch: `git push origin feature-name`
-6. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 📖 Citation
 
 If you use this implementation in your research, please cite the original paper:
@@ -265,20 +243,3 @@ If you use this implementation in your research, please cite the original paper:
 }
 ```
 
-## 🙏 Acknowledgments
-
-- Original paper authors for the DEKM algorithm
-- PyTorch team for the excellent deep learning framework
-- The open-source community for various utility libraries
-
-## 📞 Support
-
-If you encounter any issues or have questions:
-
-1. Check the [Issues](https://github.com/your-username/deep-embedded-kmeans-clustering-pytorch/issues) page
-2. Create a new issue with detailed information
-3. Contact the maintainers
-
----
-
-**Happy Clustering! 🎯**
